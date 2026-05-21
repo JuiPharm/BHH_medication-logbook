@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>เพิ่มยาฝาก - OCR</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Tesseract.js for OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <nav class="navbar navbar-dark bg-success">
+    <div class="container">
+      <span class="navbar-brand">➕ เพิ่มยาฝากใหม่</span>
+      <a href="index.html" class="btn btn-light btn-sm">← กลับหน้าหลัก</a>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <!-- OCR Section -->
+    <div class="card mb-4">
+      <div class="card-header bg-info text-white">
+        📷 สแกนใบสั่งยาด้วย OCR (อัตโนมัติ)
+      </div>
+      <div class="card-body">
+        <input type="file" id="ocrImage" accept="image/*" class="form-control" 
+               onchange="processOCR(this)">
+        <div id="ocrProgress" class="mt-2 d-none">
+          <div class="progress">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                 id="progressBar" style="width: 0%"></div>
+          </div>
+          <small class="text-muted" id="ocrStatus">กำลังประมวลผล...</small>
+        </div>
+        <div id="ocrPreview" class="mt-2"></div>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <form id="addForm" onsubmit="submitMedicine(event)">
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label>HN</label>
+          <input type="text" id="hn" class="form-control" required>
+        </div>
+        <div class="col-md-6 mb-3">
+          <label>ชื่อผู้ป่วย</label>
+          <input type="text" id="patientName" class="form-control" required>
+        </div>
+      </div>
+      
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label>ชื่อยา (Drug Name)</label>
+          <input type="text" id="drugName" class="form-control" required>
+        </div>
+        <div class="col-md-6 mb-3">
+          <label>ชื่อสามัญ (Generic Name)</label>
+          <input type="text" id="genericName" class="form-control">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <label>ความแรง (Strength)</label>
+          <input type="text" id="strength" class="form-control" placeholder="เช่น 4000 IU">
+        </div>
+        <div class="col-md-4 mb-3">
+          <label>รูปแบบ (Form)</label>
+          <input type="text" id="form" class="form-control" placeholder="Vial, Tablet">
+        </div>
+        <div class="col-md-4 mb-3">
+          <label>จำนวนรวม</label>
+          <input type="number" id="totalQty" class="form-control" required min="1">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <label>หน่วย (Unit)</label>
+          <input type="text" id="unit" class="form-control" value="Vial">
+        </div>
+        <div class="col-md-4 mb-3">
+          <label>การเก็บรักษา</label>
+          <input type="text" id="storage" class="form-control" placeholder="2-8°C">
+        </div>
+        <div class="col-md-4 mb-3">
+          <label>โรงพยาบาล</label>
+          <input type="text" id="hospital" class="form-control" value="Bangkok Hospital">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label>PN (Prescription Number)</label>
+          <input type="text" id="pn" class="form-control">
+        </div>
+        <div class="col-md-6 mb-3">
+          <label>วันที่รับยา</label>
+          <input type="date" id="entryDate" class="form-control" required>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label>วันหมดอายุ</label>
+        <input type="date" id="expiryDate" class="form-control">
+      </div>
+
+      <div class="mb-3">
+        <label>หมายเหตุ</label>
+        <textarea id="notes" class="form-control" rows="2"></textarea>
+      </div>
+
+      <button type="submit" class="btn btn-success btn-lg w-100">💾 บันทึกยาฝาก</button>
+    </form>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ocr.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
