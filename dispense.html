@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>จ่ายยา</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+  <nav class="navbar navbar-dark bg-warning">
+    <div class="container">
+      <span class="navbar-brand text-dark">💊 จ่ายยา / หักลบจำนวน</span>
+      <a href="index.html" class="btn btn-light btn-sm">← กลับ</a>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <div id="medicineInfo" class="card mb-4"></div>
+    
+    <div class="card">
+      <div class="card-body">
+        <h5>ระบุจำนวนที่จ่าย</h5>
+        <form id="dispenseForm" onsubmit="submitDispense(event)">
+          <input type="hidden" id="medicineId">
+          <input type="hidden" id="hn">
+          <input type="hidden" id="drugNameHidden">
+          
+          <div class="mb-3">
+            <label>จำนวนที่จ่าย</label>
+            <input type="number" id="dispenseQty" class="form-control form-control-lg" 
+                   required min="1" step="0.5">
+          </div>
+          
+          <div class="mb-3">
+            <label>ผู้จ่าย</label>
+            <input type="text" id="dispensedBy" class="form-control" required>
+          </div>
+          
+          <div class="mb-3">
+            <label>หมายเหตุ</label>
+            <textarea id="dispenseNotes" class="form-control"></textarea>
+          </div>
+          
+          <button type="submit" class="btn btn-warning btn-lg w-100">✅ ยืนยันการจ่ายยา</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    // Load medicine data from URL parameter
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const medId = params.get('id');
+      loadMedicineForDispense(medId);
+    });
+  </script>
+</body>
+</html>
