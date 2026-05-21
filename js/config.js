@@ -6,7 +6,7 @@
  */
 
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbydInME7nLpwHxVcTY8RFiiP3Wg7r7Kbvhrbpdu8QDC4lzPDf9rAAZSGOqe-P83K0JD/exec',
 
   // ถ้าใน google-apps-script.js ตั้ง API_TOKEN ให้ใส่ค่าเดียวกันตรงนี้
   // หมายเหตุ: ถ้า GitHub repo เป็น public token นี้จะมองเห็นได้ จึงเป็นแค่การป้องกันเบื้องต้น
