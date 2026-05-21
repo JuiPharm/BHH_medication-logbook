@@ -1,5 +1,36 @@
-// ใส่ URL จาก Google Apps Script Deploy
+/**
+ * ====================
+ * CONFIGURATION
+ * ====================
+ * แก้ไข API_URL หลังจาก Deploy Google Apps Script
+ */
+
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbydInME7nLpwHxVcTY8RFiiP3Wg7r7Kbvhrbpdu8QDC4lzPDf9rAAZSGOqe-P83K0JD/exec',
-  APP_NAME: 'สมุดยาฝาก'
+  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
+
+  // ถ้าใน google-apps-script.js ตั้ง API_TOKEN ให้ใส่ค่าเดียวกันตรงนี้
+  // หมายเหตุ: ถ้า GitHub repo เป็น public token นี้จะมองเห็นได้ จึงเป็นแค่การป้องกันเบื้องต้น
+  API_TOKEN: '',
+
+  APP_NAME: 'สมุดยาฝาก',
+  VERSION: '1.1.0',
+
+  OCR: {
+    LANG: 'tha+eng',
+    CONFIDENCE: 60
+  },
+
+  ALERT: {
+    LOW_QTY: 2,
+    CRITICAL_QTY: 1
+  }
 };
+
+function checkConfig() {
+  if (CONFIG.API_URL.includes('YOUR_DEPLOYMENT_ID')) {
+    console.error('กรุณาแก้ไข API_URL ใน js/config.js ก่อนใช้งาน');
+    alert('⚠️ กรุณาแก้ไข API_URL ใน js/config.js ก่อนใช้งาน\n\nดูคู่มือใน README.md');
+    return false;
+  }
+  return true;
+}
