@@ -238,7 +238,6 @@ async function loadMedicineForDispense(medId) {
     const qtyInput = document.getElementById('dispenseQty');
     if (qtyInput) {
       qtyInput.max = remainingQty;
-      qtyInput.placeholder = `สูงสุด ${remainingQty}`;
     }
     document.getElementById('unitLabel').textContent = med.Unit || 'Vial';
     document.getElementById('remainingHint').textContent = `${remainingQty} ${med.Unit || ''}`;
