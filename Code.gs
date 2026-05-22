@@ -42,28 +42,43 @@ const DEPARTMENT_HEADERS = [
 ];
 
 const DEPOSIT_LOCATIONS = ['OPD Pharmacy', 'IPD Pharmacy'];
+const SCHEMA_CACHE_KEY = 'MEDICATION_LOGBOOK_SCHEMA_OK_V2';
+const SCHEMA_CACHE_SECONDS = 600;
+const CACHE_ACTIVE_SECONDS = 20;
+const CACHE_SEARCH_SECONDS = 20;
+const CACHE_DEPARTMENTS_SECONDS = 21600;
+const CACHE_STAFF_SECONDS = 300;
+const CACHE_PREFIX = 'MEDLOG_V3:';
 
 function setupDatabase() {
   ensureDatabase(true);
+  clearMasterCache_();
   return 'Database setup completed';
 }
 
 function ensureDatabase(force) {
   /**
-   * Stable version: ตรวจ Sheet name และ Column ทุกครั้งที่ API ถูกเรียก
-   * เพื่อให้ระบบสร้าง Sheet/Column กลับมาให้อัตโนมัติ แม้มีคนลบหรือแก้ไขใน Google Sheet
-   * ไม่ใช้ cache เพื่อหลีกเลี่ยงเคส schema หายแต่ระบบยังคิดว่า ok
+   * Performance stable version:
+   * - ยังตรวจและสร้าง Sheet/Column ให้อัตโนมัติ
+   * - แต่ใช้ CacheService ลดการตรวจ schema ซ้ำทุก request ซึ่งเป็นสาเหตุหลักที่ทำให้ระบบตอบสนองช้า
+   * - setupDatabase() ใช้ force=true เพื่อตรวจเต็มทันที
    */
+  const cache = CacheService.getScriptCache();
+  if (!force && cache.get(SCHEMA_CACHE_KEY) === '1') return true;
+
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
 
   try {
+    if (!force && cache.get(SCHEMA_CACHE_KEY) === '1') return true;
+
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     ensureSheetColumns_(ss, SHEET_MEDICINES, MEDICINE_HEADERS, ['HN', 'PN', 'CreatedByStaffID']);
     ensureSheetColumns_(ss, SHEET_HISTORY, HISTORY_HEADERS, ['HN', 'DispensedByStaffID']);
     ensureSheetColumns_(ss, SHEET_STAFF, STAFF_HEADERS, ['StaffID']);
     ensureSheetColumns_(ss, SHEET_DEPARTMENTS, DEPARTMENT_HEADERS, ['DepartmentCode']);
     seedDefaultRows_(ss);
+    cache.put(SCHEMA_CACHE_KEY, '1', SCHEMA_CACHE_SECONDS);
     return true;
   } finally {
     lock.releaseLock();
@@ -176,6 +191,7 @@ function doGet(e) {
     if (action === 'getAllActive') return getAllActive();
     if (action === 'getHistory') return getHistory(params.hn);
     if (action === 'getMedicineById') return getMedicineById(params.id);
+    if (action === 'getDispensePageData') return getDispensePageData(params.id);
     if (action === 'getEmpty') return getEmpty();
     if (action === 'getDepartments') return getDepartments();
     if (action === 'getDepositLocations') return getDepositLocations();
@@ -215,24 +231,37 @@ function isAuthorized_(data) {
 function searchByHN(hn) {
   if (!hn) return jsonResponse({ success: false, error: 'HN is required' });
 
-  const rows = readObjects_(SHEET_MEDICINES);
   const wanted = normalizeHN_(hn);
+  const cacheKey = CACHE_PREFIX + 'SEARCH_HN:' + wanted;
+  const cached = getCachedJson_(cacheKey);
+  if (cached) return jsonResponse(cached);
+
+  const rows = readObjects_(SHEET_MEDICINES);
   const result = rows.filter(r =>
     normalizeHN_(r.HN) === wanted &&
     toNumber_(r.RemainingQty) > 0 &&
     String(r.Status || 'ACTIVE').toUpperCase() === 'ACTIVE'
   );
 
-  return jsonResponse({ success: true, count: result.length, data: result });
+  const output = { success: true, count: result.length, data: result };
+  putCachedJson_(cacheKey, output, CACHE_SEARCH_SECONDS);
+  return jsonResponse(output);
 }
 
 function getAllActive() {
+  const cacheKey = CACHE_PREFIX + 'ALL_ACTIVE';
+  const cached = getCachedJson_(cacheKey);
+  if (cached) return jsonResponse(cached);
+
   const rows = readObjects_(SHEET_MEDICINES);
   const result = rows.filter(r =>
     toNumber_(r.RemainingQty) > 0 &&
     String(r.Status || 'ACTIVE').toUpperCase() === 'ACTIVE'
   );
-  return jsonResponse({ success: true, count: result.length, data: result });
+
+  const output = { success: true, count: result.length, data: result };
+  putCachedJson_(cacheKey, output, CACHE_ACTIVE_SECONDS);
+  return jsonResponse(output);
 }
 
 function getEmpty() {
@@ -255,6 +284,30 @@ function getMedicineById(id) {
   return jsonResponse({ success: true, data: item });
 }
 
+function getDispensePageData(id) {
+  /**
+   * Batch endpoint สำหรับหน้าจ่ายยา
+   * ลด API calls จาก getMedicineById + getDepartments เหลือครั้งเดียว
+   */
+  if (!id) return jsonResponse({ success: false, error: 'Medicine ID is required' });
+
+  const rows = readObjects_(SHEET_MEDICINES);
+  const item = rows.find(r => String(r.ID) === String(id));
+  if (!item) return jsonResponse({ success: false, error: 'ไม่พบรายการยา' });
+  if (toNumber_(item.RemainingQty) <= 0 || String(item.Status || '').toUpperCase() !== 'ACTIVE') {
+    return jsonResponse({ success: false, error: 'รายการนี้ถูกจ่ายหมดหรือถูกซ่อนแล้ว' });
+  }
+
+  return jsonResponse({
+    success: true,
+    data: {
+      medicine: item,
+      departments: getDepartmentsArrayCached_(),
+      depositLocations: DEPOSIT_LOCATIONS
+    }
+  });
+}
+
 function getHistory(hn) {
   if (!hn) return jsonResponse({ success: false, error: 'HN is required' });
 
@@ -267,14 +320,7 @@ function getHistory(hn) {
 }
 
 function getDepartments() {
-  const rows = readObjects_(SHEET_DEPARTMENTS)
-    .filter(r => String(r.Active || 'TRUE').toUpperCase() !== 'FALSE')
-    .map(r => ({
-      DepartmentCode: cleanText_(r.DepartmentCode),
-      DepartmentName: cleanText_(r.DepartmentName)
-    }))
-    .filter(r => r.DepartmentName);
-
+  const rows = getDepartmentsArrayCached_();
   return jsonResponse({ success: true, count: rows.length, data: rows });
 }
 
@@ -342,6 +388,7 @@ function addMedicine(data) {
   };
 
   appendObjectRow_(medicineSheet, rowObj, ['HN', 'PN', 'CreatedByStaffID']);
+  clearMedicineCacheForHN_(rowObj.HN);
   return jsonResponse({ success: true, message: 'เพิ่มยาฝากสำเร็จ', id: rowObj.ID, hn: rowObj.HN });
 }
 
@@ -411,6 +458,7 @@ function dispenseMedicine(data) {
       Notes: cleanText_(data.notes)
     };
     appendObjectRow_(historySheet, historyRowObj, ['HN', 'DispensedByStaffID']);
+    clearMedicineCacheForHN_(historyRowObj.HN);
 
     return jsonResponse({
       success: true,
@@ -428,10 +476,9 @@ function getValidStaff_(staffId) {
   const id = normalizeStaffId_(staffId);
   if (!id) return null;
 
-  const rows = readObjects_(SHEET_STAFF);
+  const rows = getActiveStaffRowsCached_();
   const staff = rows.find(r =>
-    normalizeStaffId_(r.StaffID) === id &&
-    String(r.Active || 'TRUE').toUpperCase() !== 'FALSE'
+    normalizeStaffId_(r.StaffID) === id
   );
 
   if (!staff) return null;
@@ -440,6 +487,67 @@ function getValidStaff_(staffId) {
     StaffName: cleanText_(staff.StaffName),
     Role: cleanText_(staff.Role)
   };
+}
+
+function getDepartmentsArrayCached_() {
+  const cacheKey = CACHE_PREFIX + 'DEPARTMENTS';
+  const cached = getCachedJson_(cacheKey);
+  if (cached) return cached;
+
+  const rows = readObjects_(SHEET_DEPARTMENTS)
+    .filter(r => String(r.Active || 'TRUE').toUpperCase() !== 'FALSE')
+    .map(r => ({
+      DepartmentCode: cleanText_(r.DepartmentCode),
+      DepartmentName: cleanText_(r.DepartmentName)
+    }))
+    .filter(r => r.DepartmentName);
+
+  putCachedJson_(cacheKey, rows, CACHE_DEPARTMENTS_SECONDS);
+  return rows;
+}
+
+function getActiveStaffRowsCached_() {
+  const cacheKey = CACHE_PREFIX + 'ACTIVE_STAFF';
+  const cached = getCachedJson_(cacheKey);
+  if (cached) return cached;
+
+  const rows = readObjects_(SHEET_STAFF)
+    .filter(r => String(r.Active || 'TRUE').toUpperCase() !== 'FALSE');
+
+  putCachedJson_(cacheKey, rows, CACHE_STAFF_SECONDS);
+  return rows;
+}
+
+function getCachedJson_(key) {
+  const text = CacheService.getScriptCache().get(key);
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    return null;
+  }
+}
+
+function putCachedJson_(key, value, seconds) {
+  try {
+    CacheService.getScriptCache().put(key, JSON.stringify(value), seconds);
+  } catch (err) {
+    // CacheService มีขนาดจำกัด ถ้า cache ไม่ได้ให้ข้ามไป ระบบยังทำงานได้ปกติ
+  }
+}
+
+function clearMedicineCacheForHN_(hn) {
+  const cache = CacheService.getScriptCache();
+  cache.remove(CACHE_PREFIX + 'ALL_ACTIVE');
+  const normalizedHN = normalizeHN_(hn);
+  if (normalizedHN) cache.remove(CACHE_PREFIX + 'SEARCH_HN:' + normalizedHN);
+}
+
+function clearMasterCache_() {
+  const cache = CacheService.getScriptCache();
+  cache.remove(CACHE_PREFIX + 'DEPARTMENTS');
+  cache.remove(CACHE_PREFIX + 'ACTIVE_STAFF');
+  cache.remove(CACHE_PREFIX + 'ALL_ACTIVE');
 }
 
 function appendObjectRow_(sheet, obj, textHeaders) {

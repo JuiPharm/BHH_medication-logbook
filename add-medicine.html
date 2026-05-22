@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>เพิ่มยาฝาก - OCR</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="icon" type="image/png" href="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO">
   <link rel="shortcut icon" href="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO">
   <link rel="apple-touch-icon" href="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO">
   <link rel="stylesheet" href="css/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
 </head>
 <body>
   <nav class="navbar navbar-dark" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
@@ -166,10 +166,17 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <div id="savingOverlay" class="saving-overlay d-none">
+    <div class="saving-box">
+      <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
+      <div class="mt-3 fw-bold" data-saving-message>กำลังบันทึกข้อมูล กรุณารอสักครู่</div>
+      <div class="text-muted small mt-1">ไม่ต้องกดซ้ำ ระบบกำลังดำเนินการ</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="js/config.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/app.js"></script>
-  <script src="js/ocr.js"></script>
+  <script src="js/app.bundle.js"></script>
 </body>
 </html>

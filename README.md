@@ -271,3 +271,29 @@ https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO
 | WARD9 | Ward 9 | TRUE |
 
 > หมายเหตุ: ถ้า Staff ID ไม่มีใน Sheet `Staff` หรือ `Active = FALSE` ระบบจะไม่ให้บันทึก/ตัดจ่าย
+
+---
+
+## Stable Performance Update
+
+เวอร์ชันนี้ปรับปรุงตาม feedback การทดสอบจริง:
+
+- เพิ่ม `CacheService` ใน `Code.gs` สำหรับ `getAllActive`, `searchByHN`, `getDepartments`, และ Staff active list
+- เพิ่ม batch endpoint `getDispensePageData` เพื่อให้หน้าจ่ายยาโหลดข้อมูลยาและ dropdown หน่วยงานใน request เดียว
+- เพิ่ม local cache ฝั่ง browser สำหรับ `Departments` พร้อมแนวทาง stale-while-revalidate
+- เพิ่ม overlay และ disable submit button ทันทีหลัง user กดบันทึก/ตัดจ่าย เพื่อป้องกันการกดซ้ำ
+- หน้า `dispense.html` ดึง Ward / หน่วยงานผู้รับอัตโนมัติจาก Sheet `Departments` และเลือกค่าตามรายการยาที่ฝากไว้ถ้ามี
+- รวมไฟล์ `api.js`, `ocr.js`, `app.js` เป็น `js/app.bundle.js` เพื่อลด HTTP requests โดยยังแยก `js/config.js` ไว้ให้แก้ API URL ง่าย
+- อัปเดต Bootstrap CDN เป็น 5.3.3
+
+### วิธีใช้งานหลังอัปเดต
+
+1. เปิด Google Apps Script แล้ววาง `Code.gs` ใหม่ทั้งหมด
+2. แก้ `SPREADSHEET_ID`
+3. Run `setupDatabase()` หนึ่งครั้ง
+4. Deploy Web App ใหม่
+5. อัปโหลดไฟล์ frontend ทั้งหมดขึ้น GitHub Pages
+6. แก้ `js/config.js` ให้ใช้ URL deployment ล่าสุด
+7. ทดสอบเพิ่มยาและจ่ายยา โดยสังเกตว่าหลัง Submit จะมี overlay และปุ่มถูกปิดทันที
+
+หมายเหตุ: GitHub Pages ไม่รองรับ `_headers` สำหรับ Brotli/Gzip แบบ Netlify หรือ Cloudflare Pages ดังนั้นเวอร์ชันนี้ใช้การลด request, cache และ UX feedback เป็นหลัก
