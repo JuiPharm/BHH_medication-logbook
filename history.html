@@ -21,18 +21,12 @@
         <h4 class="mb-4">🔍 ค้นหาประวัติการจ่ายยา</h4>
         <div class="input-group input-group-lg mb-4">
           <span class="input-group-text bg-info text-white">HN</span>
-          <input type="text" id="historyHN" class="form-control">
+          <input type="text" id="historyHN" class="form-control" 
+                 placeholder="กรอก HN เพื่อดูประวัติ">
           <button class="btn btn-info text-white fw-bold" onclick="loadHistory()">ค้นหา</button>
         </div>
         <div id="historyResults"></div>
       </div>
-    </div>
-  </div>
-
-  <div class="toast-container position-fixed bottom-0 end-0 p-3">
-    <div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="toast-header"><strong class="me-auto" id="toastTitle">แจ้งเตือน</strong><button type="button" class="btn-close" data-bs-dismiss="toast"></button></div>
-      <div class="toast-body" id="toastMessage"></div>
     </div>
   </div>
 
