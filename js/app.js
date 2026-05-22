@@ -38,100 +38,10 @@ function showToast(message, type = 'info') {
   bootstrap.Toast.getOrCreateInstance(toastEl).show();
 }
 
-const submitLocks = {};
-
-function toggleSavingOverlay(show, message) {
-  const overlay = document.getElementById('savingOverlay');
-  if (!overlay) return;
-  overlay.classList.toggle('d-none', !show);
-  const text = overlay.querySelector('[data-saving-message]');
-  if (text) text.textContent = message || 'กำลังบันทึกข้อมูล กรุณารอสักครู่';
-}
-
-function setSubmitBusy(form, key, busy, message) {
-  if (!form) return false;
-
-  if (busy) {
-    if (submitLocks[key]) return false;
-    submitLocks[key] = true;
-    form.dataset.busy = 'true';
-    form.setAttribute('aria-busy', 'true');
-    toggleSavingOverlay(true, message || 'กำลังบันทึกข้อมูล กรุณารอสักครู่');
-  } else {
-    submitLocks[key] = false;
-    form.dataset.busy = 'false';
-    form.removeAttribute('aria-busy');
-    toggleSavingOverlay(false);
-  }
-
-  const submitBtn = form.querySelector('button[type="submit"]');
-  if (!submitBtn) return true;
-
-  if (busy) {
-    submitBtn.dataset.originalText = submitBtn.innerHTML;
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>${message || 'กำลังบันทึก... กรุณารอ'}`;
-    submitBtn.classList.add('disabled');
-  } else {
-    submitBtn.disabled = false;
-    submitBtn.innerHTML = submitBtn.dataset.originalText || submitBtn.innerHTML;
-    submitBtn.classList.remove('disabled');
-  }
-
-  return true;
-}
-
 
 function showInvalidStaffPopup() {
   showToast('Staff ID ไม่ถูกต้อง', 'danger');
   alert('Staff ID ไม่ถูกต้อง');
-}
-
-function popupWarning(message) {
-  showToast(message, 'warning');
-  alert(message);
-}
-
-function popupError(message) {
-  showToast(message, 'danger');
-  alert(message);
-}
-
-function validateRequiredFields(fieldDefs) {
-  const missing = [];
-  let firstMissingEl = null;
-
-  fieldDefs.forEach(def => {
-    const el = document.getElementById(def.id);
-    const value = el ? String(el.value || '').trim() : '';
-    if (!value) {
-      missing.push(def.label);
-      if (!firstMissingEl) firstMissingEl = el;
-      if (el) el.classList.add('is-invalid');
-    } else if (el) {
-      el.classList.remove('is-invalid');
-    }
-  });
-
-  if (missing.length > 0) {
-    popupWarning('กรุณากรอกข้อมูลให้ครบถ้วน:\n- ' + missing.join('\n- '));
-    if (firstMissingEl) firstMissingEl.focus();
-    return false;
-  }
-  return true;
-}
-
-function validateHNFormatOrPopup(hn) {
-  if (!/^07-\d{2}-\d{6}$/.test(String(hn || '').trim())) {
-    popupWarning('รูปแบบ HN ไม่ถูกต้อง ต้องเป็น 07-XX-YYYYYY เช่น 07-25-000023');
-    const hnInput = document.getElementById('hn') || document.getElementById('searchHN') || document.getElementById('historyHN');
-    if (hnInput) {
-      hnInput.classList.add('is-invalid');
-      hnInput.focus();
-    }
-    return false;
-  }
-  return true;
 }
 
 async function validateStaffField(inputId, labelId) {
@@ -167,72 +77,22 @@ async function validateStaffField(inputId, labelId) {
   }
 }
 
-function getLocalCache_(key, ttlMs) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const cached = JSON.parse(raw);
-    if (!cached || !cached.savedAt || Date.now() - cached.savedAt > ttlMs) return null;
-    return cached.data;
-  } catch (err) {
-    return null;
-  }
-}
-
-function setLocalCache_(key, data) {
-  try {
-    localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data }));
-  } catch (err) {
-    // localStorage เต็มหรือถูกปิดไว้ ให้ข้ามไปได้
-  }
-}
-
-async function getDepartmentsCached() {
-  const key = 'medlog_departments_v1';
-  const ttl = 6 * 60 * 60 * 1000;
-  const cached = getLocalCache_(key, ttl);
-  if (cached) {
-    // stale-while-revalidate: แสดงข้อมูล cache ทันที แล้วอัปเดตเบื้องหลัง
-    apiGet('getDepartments')
-      .then(res => { if (res.success) setLocalCache_(key, res.data || []); })
-      .catch(() => {});
-    return cached;
-  }
-
-  const res = await apiGet('getDepartments');
-  const departments = res.success ? (res.data || []) : [];
-  setLocalCache_(key, departments);
-  return departments;
-}
-
-function populateDepartmentSelect(select, departments, selectedValue = '', label = '-- เลือกหน่วยงาน --') {
-  if (!select) return;
-  select.innerHTML = `<option value="">${label}</option>`;
-  (departments || []).forEach(dep => {
-    const option = document.createElement('option');
-    option.value = dep.DepartmentCode || dep.DepartmentName;
-    option.textContent = dep.DepartmentName || dep.DepartmentCode;
-    option.dataset.name = dep.DepartmentName || '';
-    option.dataset.code = dep.DepartmentCode || '';
-    select.appendChild(option);
-  });
-
-  if (selectedValue) {
-    const wanted = String(selectedValue).trim();
-    const matched = Array.from(select.options).find(opt =>
-      opt.value === wanted || opt.dataset.name === wanted || opt.textContent === wanted
-    );
-    if (matched) select.value = matched.value;
-  }
-}
-
-async function loadDepartmentOptions(selectId = 'department', selectedValue = '') {
-  const select = document.getElementById(selectId);
+async function loadDepartmentOptions() {
+  const select = document.getElementById('department');
   if (!select || !checkConfig()) return;
 
   try {
-    const departments = await getDepartmentsCached();
-    populateDepartmentSelect(select, departments, selectedValue);
+    const res = await apiGet('getDepartments');
+    const departments = res.success ? (res.data || []) : [];
+    select.innerHTML = '<option value="">-- เลือกหน่วยงาน --</option>';
+    departments.forEach(dep => {
+      const option = document.createElement('option');
+      option.value = dep.DepartmentCode || dep.DepartmentName;
+      option.textContent = dep.DepartmentName || dep.DepartmentCode;
+      option.dataset.name = dep.DepartmentName || '';
+      option.dataset.code = dep.DepartmentCode || '';
+      select.appendChild(option);
+    });
     if (departments.length === 0) {
       showToast('ยังไม่มีข้อมูลหน่วยงานใน Sheet Departments', 'warning');
     }
@@ -277,7 +137,7 @@ async function searchMedicine() {
   const searchInput = document.getElementById('searchHN');
   const hn = applyHNFormat(searchInput);
   if (!hn) {
-    popupWarning('กรุณากรอก HN');
+    showToast('กรุณากรอก HN', 'warning');
     return;
   }
 
@@ -381,27 +241,27 @@ async function submitMedicine(e) {
   const form = document.getElementById('addForm');
   if (!form) return;
 
-  const requiredOk = validateRequiredFields([
-    { id: 'hn', label: 'HN' },
-    { id: 'patientName', label: 'ชื่อผู้ป่วย' },
-    { id: 'drugName', label: 'ชื่อยา' },
-    { id: 'totalQty', label: 'จำนวนรวม' },
-    { id: 'entryDate', label: 'วันที่รับยา' },
-    { id: 'depositLocation', label: 'จุดรับฝากยา' },
-    { id: 'department', label: 'หน่วยงานที่เอายามาฝาก' },
-    { id: 'createdByStaffId', label: 'Staff ID ผู้บันทึก' }
-  ]);
-  if (!requiredOk) return;
+  const required = ['hn', 'patientName', 'drugName', 'totalQty', 'entryDate', 'depositLocation', 'department', 'createdByStaffId'];
+  for (const id of required) {
+    const el = document.getElementById(id);
+    if (!el || !String(el.value).trim()) {
+      showToast('กรุณากรอกข้อมูลที่มีเครื่องหมาย * ให้ครบถ้วน', 'warning');
+      if (el) el.focus();
+      return;
+    }
+  }
 
   const totalQty = Number(document.getElementById('totalQty').value);
   if (!totalQty || totalQty <= 0) {
-    popupWarning('จำนวนรวมต้องมากกว่า 0');
+    showToast('จำนวนรวมต้องมากกว่า 0', 'warning');
     return;
   }
 
   const hnInput = document.getElementById('hn');
   const formattedHN = applyHNFormat(hnInput);
-  if (!validateHNFormatOrPopup(formattedHN)) return;
+
+  const staff = await validateStaffField('createdByStaffId', 'createdByStaffName');
+  if (!staff) return;
 
   const departmentSelect = document.getElementById('department');
   const selectedDepartment = departmentSelect.options[departmentSelect.selectedIndex];
@@ -432,25 +292,30 @@ async function submitMedicine(e) {
     createdByStaffId: document.getElementById('createdByStaffId').value.trim()
   };
 
-  if (!setSubmitBusy(form, 'addMedicine', true, 'กำลังบันทึก... กรุณารอ')) return;
-  showToast('กำลังบันทึกข้อมูล กรุณารอจนกว่าระบบจะแจ้งผล', 'info');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const originalText = submitBtn ? submitBtn.innerHTML : '';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> กำลังบันทึก...';
+  }
 
-  let completed = false;
   try {
     const res = await apiPost(data);
     if (res.success) {
-      completed = true;
       showToast('✅ เพิ่มยาฝากสำเร็จ', 'success');
-      setTimeout(() => window.location.href = 'index.html', 800);
+      setTimeout(() => window.location.href = 'index.html', 1200);
     } else {
       if ((res.error || '').includes('Staff ID')) showInvalidStaffPopup();
-      else popupError('❌ ' + (res.error || 'เกิดข้อผิดพลาด'));
+      else showToast('❌ ' + (res.error || 'เกิดข้อผิดพลาด'), 'danger');
     }
   } catch (err) {
     console.error(err);
     showToast('❌ ไม่สามารถเชื่อมต่อ API ได้: ' + err.message, 'danger');
   } finally {
-    if (!completed) setSubmitBusy(form, 'addMedicine', false);
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
   }
 }
 
@@ -458,22 +323,14 @@ async function loadMedicineForDispense(medId) {
   if (!checkConfig()) return;
 
   try {
-    const res = await apiGet('getDispensePageData', { id: medId });
-    if (!res.success || !res.data || !res.data.medicine) throw new Error(res.error || 'ไม่พบรายการยา');
-    const med = res.data.medicine;
-    const departments = res.data.departments || [];
-    setLocalCache_('medlog_departments_v1', departments);
+    const res = await apiGet('getMedicineById', { id: medId });
+    if (!res.success || !res.data) throw new Error(res.error || 'ไม่พบรายการยา');
+    const med = res.data;
     const remainingQty = Number(med.RemainingQty) || 0;
 
     document.getElementById('medicineId').value = med.ID;
     document.getElementById('hn').value = med.HN;
     document.getElementById('drugNameHidden').value = med.DrugName;
-
-    const wardSelect = document.getElementById('ward');
-    if (wardSelect && wardSelect.tagName === 'SELECT') {
-      const wantedWard = med.DepartmentCode || med.DepartmentName || '';
-      populateDepartmentSelect(wardSelect, departments, wantedWard, '-- เลือกหน่วยงานผู้รับ --');
-    }
 
     const qtyInput = document.getElementById('dispenseQty');
     if (qtyInput) {
@@ -521,26 +378,14 @@ async function submitDispense(e) {
   const dispenseQty = Number(document.getElementById('dispenseQty').value);
   const remainingQty = Number((document.getElementById('remainingHint').textContent || '').match(/[0-9.]+/)?.[0] || 0);
 
-  const requiredOk = validateRequiredFields([
-    { id: 'dispenseQty', label: 'จำนวนที่จ่าย' },
-    { id: 'dispensedByStaffId', label: 'Staff ID ผู้จ่าย' },
-    { id: 'ward', label: 'Ward / หน่วยงานผู้รับ' }
-  ]);
-  if (!requiredOk) return;
-
   if (!dispenseQty || dispenseQty <= 0) {
-    popupWarning('จำนวนที่จ่ายต้องมากกว่า 0');
+    showToast('กรุณาระบุจำนวนที่จ่าย', 'warning');
     return;
   }
   if (dispenseQty > remainingQty) {
-    popupError(`จำนวนที่จ่ายมากกว่าจำนวนคงเหลือ (${remainingQty})`);
+    showToast(`จำนวนที่จ่ายมากกว่าจำนวนคงเหลือ (${remainingQty})`, 'danger');
     return;
   }
-
-  const wardEl = document.getElementById('ward');
-  const wardName = wardEl && wardEl.tagName === 'SELECT'
-    ? (wardEl.options[wardEl.selectedIndex]?.dataset?.name || wardEl.options[wardEl.selectedIndex]?.textContent || wardEl.value)
-    : (wardEl ? wardEl.value.trim() : '');
 
   const data = {
     action: 'dispense',
@@ -548,29 +393,42 @@ async function submitDispense(e) {
     dispenseQty,
     dispensedByStaffId: document.getElementById('dispensedByStaffId').value.trim(),
     receiver: document.getElementById('receiver').value.trim(),
-    ward: wardName,
+    ward: document.getElementById('ward').value.trim(),
     notes: document.getElementById('dispenseNotes').value.trim()
   };
 
-  if (!setSubmitBusy(form, 'dispense', true, 'กำลังตัดจ่าย... กรุณารอ')) return;
-  showToast('กำลังตัดจ่ายยา กรุณารอจนกว่าระบบจะแจ้งผล', 'info');
+  if (!data.dispensedByStaffId) {
+    showToast('กรุณากรอก Staff ID ผู้จ่าย', 'warning');
+    return;
+  }
 
-  let completed = false;
+  const staff = await validateStaffField('dispensedByStaffId', 'dispensedByStaffName');
+  if (!staff) return;
+
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const originalText = submitBtn ? submitBtn.innerHTML : '';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> กำลังจ่ายยา...';
+  }
+
   try {
     const res = await apiPost(data);
     if (res.success) {
-      completed = true;
       showToast(res.isHidden ? '✅ จ่ายยาสำเร็จ คงเหลือ 0 รายการถูกซ่อนแล้ว' : `✅ จ่ายยาสำเร็จ เหลือ ${res.remainingQty}`, 'success');
-      setTimeout(() => window.location.href = 'index.html', 800);
+      setTimeout(() => window.location.href = 'index.html', 1200);
     } else {
       if ((res.error || '').includes('Staff ID')) showInvalidStaffPopup();
-      else popupError('❌ ' + (res.error || 'เกิดข้อผิดพลาด'));
+      else showToast('❌ ' + (res.error || 'เกิดข้อผิดพลาด'), 'danger');
     }
   } catch (err) {
     console.error(err);
     showToast('❌ ไม่สามารถเชื่อมต่อ API ได้: ' + err.message, 'danger');
   } finally {
-    if (!completed) setSubmitBusy(form, 'dispense', false);
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
   }
 }
 
@@ -579,7 +437,7 @@ async function loadHistory() {
   const historyInput = document.getElementById('historyHN');
   const hn = applyHNFormat(historyInput);
   if (!hn) {
-    popupWarning('กรุณากรอก HN');
+    showToast('กรุณากรอก HN', 'warning');
     return;
   }
   const container = document.getElementById('historyResults');
@@ -680,13 +538,5 @@ document.addEventListener('DOMContentLoaded', () => {
   if (hnParam && historyInput) {
     historyInput.value = hnParam;
     loadHistory();
-  }
-
-  if (document.getElementById('results') && Number(CONFIG.AUTO_REFRESH_MS) > 0) {
-    setInterval(() => {
-      const input = document.getElementById('searchHN');
-      if (input && input.value.trim()) searchMedicine();
-      else loadAllActive();
-    }, Number(CONFIG.AUTO_REFRESH_MS));
   }
 });
