@@ -2,71 +2,75 @@
  * ============================================================
  * GOOGLE APPS SCRIPT - Backend API for Medication Logbook
  * ============================================================
- * วิธีใช้:
- * 1) เปิด Google Sheets → Extensions → Apps Script
- * 2) วางโค้ดนี้ทั้งหมด
- * 3) แก้ SPREADSHEET_ID
- * 4) Run function: setupDatabase() หนึ่งครั้ง หรือให้ระบบตรวจและสร้าง Column อัตโนมัติเมื่อ API ถูกเรียก
- * 5) Deploy → New deployment → Web app
- *    Execute as: Me
- *    Access: Anyone หรือ Anyone with the link
- * 6) คัดลอก Web App URL ไปใส่ใน js/config.js
- *
- * หมายเหตุ CORS:
- * - ไม่ใช้ setHeader / setHeaders เพราะ ContentService ไม่รองรับในหลาย runtime
- * - Front-end ส่ง POST แบบ simple request โดยไม่ใส่ Content-Type header
+ * Features:
+ * - Google Sheet database with auto-created sheets/columns
+ * - HN stored as text format 07-XX-YYYYYY
+ * - Staff ID validation before add medicine and dispense
+ * - Exact dispense by MedicineID, so multiple HN / multiple medicines per HN are safe
+ * - Department dropdown source from Departments sheet
  */
 
 const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE';
-const API_TOKEN = ''; // ไม่บังคับ: ใส่รหัสลับถ้าต้องการ เช่น 'CHANGE_THIS_SECRET'
+const API_TOKEN = ''; // Optional. Example: 'CHANGE_THIS_SECRET'
 
 const SHEET_MEDICINES = 'Medicines';
 const SHEET_HISTORY = 'DispenseHistory';
+const SHEET_STAFF = 'Staff';
+const SHEET_DEPARTMENTS = 'Departments';
 
 const MEDICINE_HEADERS = [
   'ID', 'HN', 'PatientName', 'DrugName', 'GenericName', 'Strength', 'Form',
   'TotalQty', 'RemainingQty', 'Unit', 'Storage', 'Hospital', 'PN',
   'EntryDate', 'ExpiryDate', 'AdministrationSchedule', 'FollowUpDate',
-  'ImageURL', 'OCRRawText', 'Notes', 'Status', 'CreatedAt', 'LastDispensed', 'CreatedBy'
+  'DepositLocation', 'DepartmentCode', 'DepartmentName',
+  'ImageURL', 'OCRRawText', 'Notes', 'Status', 'CreatedAt', 'LastDispensed',
+  'CreatedByStaffID', 'CreatedByName'
 ];
 
 const HISTORY_HEADERS = [
   'DispenseID', 'MedicineID', 'HN', 'PatientName', 'DrugName',
-  'DispenseQty', 'RemainingAfter', 'DispensedBy', 'Receiver', 'Ward',
-  'DispenseDate', 'Notes'
+  'DispenseQty', 'RemainingAfter', 'DispensedByStaffID', 'DispensedByName',
+  'Receiver', 'Ward', 'DispenseDate', 'Notes'
 ];
 
-/**
- * Run manually once after changing SPREADSHEET_ID.
- * ปลอดภัยกับข้อมูลเดิม: ถ้า Sheet/Column ไม่มี จะสร้างเพิ่มให้
- * แต่จะไม่ลบ ไม่ย้าย และไม่เขียนทับ header เดิมที่มีอยู่แล้ว
- */
+const STAFF_HEADERS = [
+  'StaffID', 'StaffName', 'Role', 'Active', 'CreatedAt', 'Notes'
+];
+
+const DEPARTMENT_HEADERS = [
+  'DepartmentCode', 'DepartmentName', 'Active', 'CreatedAt', 'Notes'
+];
+
+const DEPOSIT_LOCATIONS = ['OPD Pharmacy', 'IPD Pharmacy'];
+
 function setupDatabase() {
-  ensureDatabase();
+  ensureDatabase(true);
   return 'Database setup completed';
 }
 
-/**
- * ตรวจสอบโครงสร้างฐานข้อมูลก่อนทุก API call
- * - ถ้าไม่มี Sheet จะสร้าง Sheet และ header ครบชุด
- * - ถ้ามี Sheet แล้ว แต่ขาด column จะเพิ่ม column ที่ขาดต่อท้าย
- * - ไม่ reorder column เดิม เพื่อไม่กระทบข้อมูลเก่า
- */
-function ensureDatabase() {
+function ensureDatabase(force) {
+  /**
+   * Stable version: ตรวจ Sheet name และ Column ทุกครั้งที่ API ถูกเรียก
+   * เพื่อให้ระบบสร้าง Sheet/Column กลับมาให้อัตโนมัติ แม้มีคนลบหรือแก้ไขใน Google Sheet
+   * ไม่ใช้ cache เพื่อหลีกเลี่ยงเคส schema หายแต่ระบบยังคิดว่า ok
+   */
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
 
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    ensureSheetColumns_(ss, SHEET_MEDICINES, MEDICINE_HEADERS);
-    ensureSheetColumns_(ss, SHEET_HISTORY, HISTORY_HEADERS);
+    ensureSheetColumns_(ss, SHEET_MEDICINES, MEDICINE_HEADERS, ['HN', 'PN', 'CreatedByStaffID']);
+    ensureSheetColumns_(ss, SHEET_HISTORY, HISTORY_HEADERS, ['HN', 'DispensedByStaffID']);
+    ensureSheetColumns_(ss, SHEET_STAFF, STAFF_HEADERS, ['StaffID']);
+    ensureSheetColumns_(ss, SHEET_DEPARTMENTS, DEPARTMENT_HEADERS, ['DepartmentCode']);
+    seedDefaultRows_(ss);
     return true;
   } finally {
     lock.releaseLock();
   }
 }
 
-function ensureSheetColumns_(ss, sheetName, requiredHeaders) {
+function ensureSheetColumns_(ss, sheetName, requiredHeaders, textHeaders) {
   let sheet = ss.getSheetByName(sheetName);
 
   if (!sheet) {
@@ -74,6 +78,7 @@ function ensureSheetColumns_(ss, sheetName, requiredHeaders) {
     sheet.getRange(1, 1, 1, requiredHeaders.length).setValues([requiredHeaders]);
     sheet.setFrozenRows(1);
     sheet.getRange(1, 1, 1, requiredHeaders.length).setFontWeight('bold');
+    applyTextColumnFormats_(sheet, requiredHeaders, textHeaders || []);
     return sheet;
   }
 
@@ -89,6 +94,7 @@ function ensureSheetColumns_(ss, sheetName, requiredHeaders) {
     sheet.getRange(1, 1, 1, requiredHeaders.length).setValues([requiredHeaders]);
     sheet.setFrozenRows(1);
     sheet.getRange(1, 1, 1, requiredHeaders.length).setFontWeight('bold');
+    applyTextColumnFormats_(sheet, requiredHeaders, textHeaders || []);
     return sheet;
   }
 
@@ -104,14 +110,52 @@ function ensureSheetColumns_(ss, sheetName, requiredHeaders) {
   }
 
   sheet.setFrozenRows(1);
+  applyTextColumnFormats_(sheet, requiredHeaders, textHeaders || []);
   return sheet;
 }
 
+function applyTextColumnFormats_(sheet, requiredHeaders, textHeaders) {
+  if (!textHeaders || textHeaders.length === 0) return;
+
+  const headerRow = sheet
+    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), requiredHeaders.length))
+    .getValues()[0]
+    .map(h => String(h || '').trim());
+
+  textHeaders.forEach(header => {
+    const index = headerRow.findIndex(h => normalizeHeader_(h) === normalizeHeader_(header));
+    if (index >= 0) {
+      sheet.getRange(1, index + 1, Math.max(sheet.getMaxRows(), 1), 1).setNumberFormat('@');
+    }
+  });
+}
+
+function seedDefaultRows_(ss) {
+  /**
+   * เติมข้อมูลเริ่มต้นเฉพาะชีตที่ยังว่าง เพื่อให้ dropdown ใช้งานได้ทันที
+   * Staff ต้องเพิ่มเองตามหน่วยงานจริง จึงไม่ seed Staff ปลอมให้
+   */
+  const depSheet = ss.getSheetByName(SHEET_DEPARTMENTS);
+  if (depSheet && depSheet.getLastRow() <= 1) {
+    appendObjectRow_(depSheet, {
+      DepartmentCode: 'OPD',
+      DepartmentName: 'OPD',
+      Active: true,
+      CreatedAt: new Date(),
+      Notes: 'Default department - edit as needed'
+    }, ['DepartmentCode']);
+    appendObjectRow_(depSheet, {
+      DepartmentCode: 'IPD',
+      DepartmentName: 'IPD',
+      Active: true,
+      CreatedAt: new Date(),
+      Notes: 'Default department - edit as needed'
+    }, ['DepartmentCode']);
+  }
+}
+
 function normalizeHeader_(header) {
-  return String(header || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '');
+  return String(header || '').trim().toLowerCase().replace(/\s+/g, '');
 }
 
 function onOpen() {
@@ -133,6 +177,9 @@ function doGet(e) {
     if (action === 'getHistory') return getHistory(params.hn);
     if (action === 'getMedicineById') return getMedicineById(params.id);
     if (action === 'getEmpty') return getEmpty();
+    if (action === 'getDepartments') return getDepartments();
+    if (action === 'getDepositLocations') return getDepositLocations();
+    if (action === 'validateStaff') return validateStaffIdAction_(params.staffId);
 
     return jsonResponse({ success: false, error: 'Invalid action' });
   } catch (err) {
@@ -219,10 +266,44 @@ function getHistory(hn) {
   return jsonResponse({ success: true, count: rows.length, data: rows });
 }
 
+function getDepartments() {
+  const rows = readObjects_(SHEET_DEPARTMENTS)
+    .filter(r => String(r.Active || 'TRUE').toUpperCase() !== 'FALSE')
+    .map(r => ({
+      DepartmentCode: cleanText_(r.DepartmentCode),
+      DepartmentName: cleanText_(r.DepartmentName)
+    }))
+    .filter(r => r.DepartmentName);
+
+  return jsonResponse({ success: true, count: rows.length, data: rows });
+}
+
+function getDepositLocations() {
+  return jsonResponse({ success: true, data: DEPOSIT_LOCATIONS });
+}
+
+function validateStaffIdAction_(staffId) {
+  const staff = getValidStaff_(staffId);
+  if (!staff) {
+    return jsonResponse({ success: false, error: 'Staff ID ไม่ถูกต้อง' });
+  }
+  return jsonResponse({ success: true, data: staff });
+}
+
 function addMedicine(data) {
   validateRequired_(data.hn, 'HN');
   validateRequired_(data.patientName, 'ชื่อผู้ป่วย');
   validateRequired_(data.drugName, 'ชื่อยา');
+  validateRequired_(data.createdByStaffId, 'Staff ID ผู้บันทึก');
+  validateRequired_(data.depositLocation, 'จุดรับฝากยา');
+  validateRequired_(data.departmentName, 'หน่วยงานที่เอายามาฝาก');
+
+  const staff = getValidStaff_(data.createdByStaffId);
+  if (!staff) throw new Error('Staff ID ไม่ถูกต้อง');
+
+  if (DEPOSIT_LOCATIONS.indexOf(cleanText_(data.depositLocation)) === -1) {
+    throw new Error('จุดรับฝากยาไม่ถูกต้อง');
+  }
 
   const totalQty = toNumber_(data.totalQty);
   if (totalQty <= 0) throw new Error('จำนวนรวมต้องมากกว่า 0');
@@ -231,7 +312,7 @@ function addMedicine(data) {
   const medicineSheet = getSheet_(SHEET_MEDICINES);
   const rowObj = {
     ID: Utilities.getUuid(),
-    HN: cleanText_(data.hn),
+    HN: formatHNForStorage_(data.hn),
     PatientName: cleanText_(data.patientName),
     DrugName: cleanText_(data.drugName),
     GenericName: cleanText_(data.genericName),
@@ -247,17 +328,21 @@ function addMedicine(data) {
     ExpiryDate: cleanText_(data.expiryDate),
     AdministrationSchedule: cleanText_(data.administrationSchedule),
     FollowUpDate: cleanText_(data.followUpDate),
+    DepositLocation: cleanText_(data.depositLocation),
+    DepartmentCode: cleanText_(data.departmentCode),
+    DepartmentName: cleanText_(data.departmentName),
     ImageURL: cleanText_(data.imageUrl),
     OCRRawText: cleanText_(data.ocrRawText),
     Notes: cleanText_(data.notes),
     Status: 'ACTIVE',
     CreatedAt: now,
     LastDispensed: '',
-    CreatedBy: cleanText_(data.createdBy)
+    CreatedByStaffID: normalizeStaffId_(data.createdByStaffId),
+    CreatedByName: staff.StaffName || ''
   };
 
-  medicineSheet.appendRow(objectToSheetRow_(medicineSheet, rowObj));
-  return jsonResponse({ success: true, message: 'เพิ่มยาฝากสำเร็จ', id: rowObj.ID });
+  appendObjectRow_(medicineSheet, rowObj, ['HN', 'PN', 'CreatedByStaffID']);
+  return jsonResponse({ success: true, message: 'เพิ่มยาฝากสำเร็จ', id: rowObj.ID, hn: rowObj.HN });
 }
 
 function dispenseMedicine(data) {
@@ -266,22 +351,29 @@ function dispenseMedicine(data) {
 
   try {
     validateRequired_(data.medicineId, 'Medicine ID');
-    validateRequired_(data.dispensedBy, 'ผู้จ่าย');
+    validateRequired_(data.dispensedByStaffId, 'Staff ID ผู้จ่าย');
+
+    const staff = getValidStaff_(data.dispensedByStaffId);
+    if (!staff) throw new Error('Staff ID ไม่ถูกต้อง');
 
     const dispenseQty = toNumber_(data.dispenseQty);
     if (dispenseQty <= 0) throw new Error('จำนวนที่จ่ายต้องมากกว่า 0');
 
     const sheet = getSheet_(SHEET_MEDICINES);
-    const values = sheet.getDataRange().getValues();
+    const range = sheet.getDataRange();
+    const values = range.getValues();
+    const displayValues = range.getDisplayValues();
     const headers = values[0].map(String);
     const idx = makeIndex_(headers);
 
     let sheetRow = -1;
     let row = null;
+    let rowDisplay = null;
     for (let i = 1; i < values.length; i++) {
       if (String(values[i][idx.ID]) === String(data.medicineId)) {
         sheetRow = i + 1;
         row = values[i];
+        rowDisplay = displayValues[i];
         break;
       }
     }
@@ -306,57 +398,114 @@ function dispenseMedicine(data) {
     const historyRowObj = {
       DispenseID: Utilities.getUuid(),
       MedicineID: data.medicineId,
-      HN: row[idx.HN] || '',
+      HN: safeFormatHN_(rowDisplay ? rowDisplay[idx.HN] : row[idx.HN]),
       PatientName: row[idx.PatientName] || '',
       DrugName: row[idx.DrugName] || '',
       DispenseQty: dispenseQty,
       RemainingAfter: newRemaining,
-      DispensedBy: cleanText_(data.dispensedBy),
+      DispensedByStaffID: normalizeStaffId_(data.dispensedByStaffId),
+      DispensedByName: staff.StaffName || '',
       Receiver: cleanText_(data.receiver),
       Ward: cleanText_(data.ward),
       DispenseDate: now,
       Notes: cleanText_(data.notes)
     };
-    historySheet.appendRow(objectToSheetRow_(historySheet, historyRowObj));
+    appendObjectRow_(historySheet, historyRowObj, ['HN', 'DispensedByStaffID']);
 
     return jsonResponse({
       success: true,
       message: 'จ่ายยาสำเร็จ',
       remainingQty: newRemaining,
-      isHidden: newRemaining <= 0
+      isHidden: newRemaining <= 0,
+      dispensedByName: staff.StaffName || ''
     });
   } finally {
     lock.releaseLock();
   }
 }
 
+function getValidStaff_(staffId) {
+  const id = normalizeStaffId_(staffId);
+  if (!id) return null;
+
+  const rows = readObjects_(SHEET_STAFF);
+  const staff = rows.find(r =>
+    normalizeStaffId_(r.StaffID) === id &&
+    String(r.Active || 'TRUE').toUpperCase() !== 'FALSE'
+  );
+
+  if (!staff) return null;
+  return {
+    StaffID: cleanText_(staff.StaffID),
+    StaffName: cleanText_(staff.StaffName),
+    Role: cleanText_(staff.Role)
+  };
+}
+
+function appendObjectRow_(sheet, obj, textHeaders) {
+  const row = sheet.getLastRow() + 1;
+  const values = objectToSheetRow_(sheet, obj);
+  const headers = getSheetHeaders_(sheet);
+
+  (textHeaders || []).forEach(header => {
+    const colIndex = headers.findIndex(h => normalizeHeader_(h) === normalizeHeader_(header)) + 1;
+    if (colIndex > 0) sheet.getRange(row, colIndex).setNumberFormat('@');
+  });
+
+  sheet.getRange(row, 1, 1, values.length).setValues([values]);
+}
+
+function getSheetHeaders_(sheet) {
+  return sheet
+    .getRange(1, 1, 1, sheet.getLastColumn())
+    .getValues()[0]
+    .map(h => String(h || '').trim());
+}
+
 function getSheet_(name) {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(name);
-  if (!sheet) throw new Error('ไม่พบ Sheet: ' + name + ' กรุณา run setupDatabase() ก่อน');
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName(name);
+  if (sheet) return sheet;
+
+  // fallback กรณีมีคนลบ sheet หลังจากเริ่ม request
+  ensureDatabase(true);
+  sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(name);
+  if (!sheet) throw new Error('ไม่สามารถสร้าง Sheet: ' + name + ' ได้');
   return sheet;
 }
 
 function readObjects_(sheetName) {
   const sheet = getSheet_(sheetName);
-  const values = sheet.getDataRange().getValues();
+  const range = sheet.getDataRange();
+  const values = range.getValues();
+  const displayValues = range.getDisplayValues();
   if (values.length <= 1) return [];
 
   const headers = values[0].map(String);
-  return values.slice(1).filter(r => r.some(v => v !== '')).map(row => rowToObject_(headers, row));
+  const displayHeaders = displayValues[0].map(String);
+  return values
+    .slice(1)
+    .filter(r => r.some(v => v !== ''))
+    .map((row, i) => rowToObject_(headers, row, displayValues[i + 1], displayHeaders));
 }
 
-function rowToObject_(headers, row) {
+function rowToObject_(headers, row, displayRow) {
   const obj = {};
   headers.forEach((h, i) => {
     if (!h) return;
+    const header = String(h).trim();
     const value = row[i];
-    obj[h] = value instanceof Date ? value.toISOString() : (value === undefined ? '' : value);
+    const displayValue = displayRow ? displayRow[i] : value;
+
+    if (header === 'HN' || header === 'StaffID' || header === 'CreatedByStaffID' || header === 'DispensedByStaffID') {
+      obj[header] = cleanText_(displayValue);
+    } else if (value instanceof Date) {
+      obj[header] = value.toISOString();
+    } else {
+      obj[header] = value === undefined ? '' : value;
+    }
   });
   return obj;
-}
-
-function objectToRow_(headers, obj) {
-  return headers.map(h => obj[h] === undefined ? '' : obj[h]);
 }
 
 function objectToSheetRow_(sheet, obj) {
@@ -374,8 +523,42 @@ function makeIndex_(headers) {
   return idx;
 }
 
+function formatHNForStorage_(hn) {
+  const digits = normalizeHN_(hn);
+
+  if (!digits) return '';
+  if (!digits.startsWith('07')) {
+    throw new Error('รูปแบบ HN ต้องขึ้นต้นด้วย 07 และอยู่ในรูปแบบ 07-XX-YYYYYY');
+  }
+  if (digits.length < 5) {
+    throw new Error('รูปแบบ HN ไม่ถูกต้อง ต้องเป็น 07-XX-YYYYYY');
+  }
+
+  const prefix = digits.slice(0, 2);
+  const middle = digits.slice(2, 4);
+  const running = digits.slice(4).padStart(6, '0').slice(-6);
+  const formatted = `${prefix}-${middle}-${running}`;
+
+  if (!/^07-\d{2}-\d{6}$/.test(formatted)) {
+    throw new Error('รูปแบบ HN ไม่ถูกต้อง ต้องเป็น 07-XX-YYYYYY');
+  }
+  return formatted;
+}
+
+function safeFormatHN_(hn) {
+  try {
+    return formatHNForStorage_(hn);
+  } catch (err) {
+    return cleanText_(hn);
+  }
+}
+
 function normalizeHN_(hn) {
   return String(hn || '').replace(/[^0-9]/g, '');
+}
+
+function normalizeStaffId_(staffId) {
+  return String(staffId || '').trim().toUpperCase();
 }
 
 function toNumber_(value) {

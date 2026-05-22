@@ -2,7 +2,7 @@
  * ====================
  * API CLIENT
  * ====================
- * เชื่อมต่อกับ Google Apps Script API
+ * ใช้ simple request เพื่อให้เรียก Google Apps Script จาก GitHub Pages ได้ง่ายขึ้น
  */
 
 class ApiClient {
@@ -10,64 +10,50 @@ class ApiClient {
     this.baseUrl = CONFIG.API_URL;
   }
 
-  // GET Request
   async get(action, params = {}) {
     const url = new URL(this.baseUrl);
-    url.searchParams.append('action', action);
+    url.searchParams.set('action', action);
+    if (CONFIG.API_TOKEN) url.searchParams.set('token', CONFIG.API_TOKEN);
 
     Object.keys(params).forEach(key => {
-      url.searchParams.append(key, params[key]);
+      if (params[key] !== undefined && params[key] !== null) {
+        url.searchParams.set(key, params[key]);
+      }
     });
 
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        mode: 'cors',
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('API GET Error:', error);
-      throw error;
-    }
+    const response = await fetch(url.toString(), { method: 'GET' });
+    return await this.parseResponse(response);
   }
 
-  // POST Request
   async post(data) {
+    const payload = { ...data };
+    if (CONFIG.API_TOKEN) payload.token = CONFIG.API_TOKEN;
+
+    // ห้ามตั้ง Content-Type: application/json เพื่อหลีกเลี่ยง preflight CORS
+    const response = await fetch(this.baseUrl, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    return await this.parseResponse(response);
+  }
+
+  async parseResponse(response) {
+    const text = await response.text();
+    let json;
     try {
-      const response = await fetch(this.baseUrl, {
-        method: 'POST',
-        mode: 'cors',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(data)
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('API POST Error:', error);
-      throw error;
+      json = JSON.parse(text);
+    } catch (err) {
+      throw new Error('API ไม่ได้ตอบกลับเป็น JSON: ' + text.slice(0, 200));
     }
+    if (!response.ok) {
+      throw new Error(json.error || `HTTP ${response.status}`);
+    }
+    return json;
   }
 }
 
-// สร้าง instance ใช้งาน
 const api = new ApiClient();
 
-// ฟังก์ชัน wrapper สำหรับใช้งานง่าย
 async function apiGet(action, params) {
   return await api.get(action, params);
 }

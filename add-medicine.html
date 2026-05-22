@@ -5,152 +5,153 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>เพิ่มยาฝาก - OCR</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="icon" type="image/png" href="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO">
+  <link rel="shortcut icon" href="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO">
+  <link rel="apple-touch-icon" href="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO">
   <link rel="stylesheet" href="css/style.css">
-  <!-- Tesseract.js for OCR -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
   <nav class="navbar navbar-dark" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
     <div class="container">
-      <span class="navbar-brand fw-bold">➕ เพิ่มยาฝากใหม่</span>
+      <span class="navbar-brand fw-bold"><img src="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO" alt="Logo" class="app-logo"> <span>เพิ่มยาฝากใหม่ + OCR</span></span>
       <a href="index.html" class="btn btn-light btn-sm fw-bold">← กลับหน้าหลัก</a>
     </div>
   </nav>
 
   <div class="container mt-4 mb-5">
-    <!-- OCR Section -->
     <div class="card shadow-lg border-0 mb-4">
       <div class="card-header text-white fw-bold" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-        📷 สแกนใบสั่งยาด้วย OCR (อัตโนมัติ)
+        📷 สแกนฉลากยา / ใบสั่งยาด้วย OCR
       </div>
       <div class="card-body p-4">
-        <div class="row">
+        <div class="row g-2 align-items-center">
           <div class="col-md-8">
-            <input type="file" id="ocrImage" accept="image/*" class="form-control form-control-lg" 
-                   onchange="processOCR(this)">
-            <small class="text-muted">รองรับไฟล์ JPG, PNG ขนาดไม่เกิน 5MB</small>
+            <input type="file" id="ocrImage" accept="image/*" class="form-control form-control-lg" onchange="processOCR(this)">
+            <small class="text-muted">รองรับ JPG/PNG ขนาดไม่เกิน 8MB ระบบจะกรอกข้อมูลอัตโนมัติ แต่ต้องตรวจทานก่อนบันทึก</small>
           </div>
           <div class="col-md-4">
-            <button class="btn btn-outline-secondary w-100" onclick="document.getElementById('ocrImage').click()">
-              📁 เลือกรูปภาพ
-            </button>
+            <button class="btn btn-outline-secondary w-100" onclick="document.getElementById('ocrImage').click()">📁 เลือกรูปภาพ</button>
           </div>
         </div>
 
         <div id="ocrProgress" class="mt-3 d-none">
           <div class="progress" style="height: 25px;">
-            <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" 
-                 id="progressBar" style="width: 0%"></div>
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" id="progressBar" style="width: 0%"></div>
           </div>
-          <div class="text-center mt-2">
-            <span class="badge bg-info" id="ocrStatus">กำลังประมวลผล...</span>
-          </div>
+          <div class="text-center mt-2"><span class="badge bg-info" id="ocrStatus">กำลังประมวลผล...</span></div>
         </div>
-
         <div id="ocrPreview" class="mt-3"></div>
       </div>
     </div>
 
-    <!-- Form -->
     <div class="card shadow-lg border-0">
-      <div class="card-header bg-light fw-bold">
-        📝 กรอกข้อมูลยาฝาก
-      </div>
+      <div class="card-header bg-light fw-bold">📝 ข้อมูลยาฝาก</div>
       <div class="card-body p-4">
-        <form id="addForm" onsubmit="submitMedicine(event)">
+        <form id="addForm" onsubmit="submitMedicine(event)" novalidate>
           <div class="row">
             <div class="col-md-6 mb-3">
               <label class="form-label fw-bold">HN <span class="text-danger">*</span></label>
-              <input type="text" id="hn" class="form-control" placeholder="07-13-000025" required>
+              <input type="text" id="hn" class="form-control" inputmode="numeric" pattern="07-[0-9]{2}-[0-9]{6}" required>
             </div>
             <div class="col-md-6 mb-3">
               <label class="form-label fw-bold">ชื่อผู้ป่วย <span class="text-danger">*</span></label>
-              <input type="text" id="patientName" class="form-control" placeholder="นายสมชาย ใจดี" required>
+              <input type="text" id="patientName" class="form-control" required>
             </div>
           </div>
 
           <div class="row">
             <div class="col-md-6 mb-3">
-              <label class="form-label fw-bold">ชื่อยา (Drug Name) <span class="text-danger">*</span></label>
-              <input type="text" id="drugName" class="form-control" placeholder="Espogen" required>
+              <label class="form-label fw-bold">ชื่อยา <span class="text-danger">*</span></label>
+              <input type="text" id="drugName" class="form-control" required>
             </div>
             <div class="col-md-6 mb-3">
-              <label class="form-label fw-bold">ชื่อสามัญ (Generic Name)</label>
-              <input type="text" id="genericName" class="form-control" placeholder="epoetin alfa">
+              <label class="form-label fw-bold">ชื่อสามัญ</label>
+              <input type="text" id="genericName" class="form-control">
             </div>
           </div>
 
           <div class="row">
             <div class="col-md-3 mb-3">
-              <label class="form-label fw-bold">ความแรง (Strength)</label>
-              <input type="text" id="strength" class="form-control" placeholder="4000 IU">
+              <label class="form-label fw-bold">ความแรง</label>
+              <input type="text" id="strength" class="form-control">
             </div>
             <div class="col-md-3 mb-3">
-              <label class="form-label fw-bold">รูปแบบ (Form)</label>
+              <label class="form-label fw-bold">รูปแบบ</label>
               <select id="form" class="form-select">
-                <option value="Vial">Vial (ขวด)</option>
-                <option value="Tablet">Tablet (เม็ด)</option>
-                <option value="Capsule">Capsule (แคปซูล)</option>
-                <option value="Ampoule">Ampoule (แอมปูล)</option>
-                <option value="Bottle">Bottle (ขวด)</option>
-                <option value="Syringe">Syringe (เข็มฉีดยา)</option>
-                <option value="Other">อื่นๆ</option>
+                <option value="Vial">Vial</option><option value="Ampoule">Ampoule</option><option value="Syringe">Syringe</option>
+                <option value="Tablet">Tablet</option><option value="Capsule">Capsule</option><option value="Bottle">Bottle</option><option value="Other">Other</option>
               </select>
             </div>
             <div class="col-md-3 mb-3">
               <label class="form-label fw-bold">จำนวนรวม <span class="text-danger">*</span></label>
-              <input type="number" id="totalQty" class="form-control" required min="1" step="0.5">
+              <input type="number" id="totalQty" class="form-control" required min="0.5" step="0.5">
             </div>
             <div class="col-md-3 mb-3">
-              <label class="form-label fw-bold">หน่วย (Unit)</label>
+              <label class="form-label fw-bold">หน่วย</label>
               <select id="unit" class="form-select">
-                <option value="Vial">Vial</option>
-                <option value="Tablet">Tablet</option>
-                <option value="Capsule">Capsule</option>
-                <option value="Ampoule">Ampoule</option>
-                <option value="Bottle">Bottle</option>
-                <option value="Syringe">Syringe</option>
-                <option value="Box">Box</option>
-                <option value="อื่นๆ">อื่นๆ</option>
+                <option value="Vial">Vial</option><option value="Ampoule">Ampoule</option><option value="Syringe">Syringe</option>
+                <option value="Tablet">Tablet</option><option value="Capsule">Capsule</option><option value="Bottle">Bottle</option><option value="Box">Box</option>
               </select>
             </div>
           </div>
 
           <div class="row">
+            <div class="col-md-4 mb-3"><label class="form-label fw-bold">การเก็บรักษา</label><input type="text" id="storage" class="form-control"></div>
+            <div class="col-md-4 mb-3"><label class="form-label fw-bold">โรงพยาบาล</label><input type="text" id="hospital" class="form-control" value="Bangkok Hospital"></div>
+            <div class="col-md-4 mb-3"><label class="form-label fw-bold">PN</label><input type="text" id="pn" class="form-control"></div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-4 mb-3"><label class="form-label fw-bold">วันที่รับยา <span class="text-danger">*</span></label><input type="date" id="entryDate" class="form-control" required></div>
+            <div class="col-md-4 mb-3"><label class="form-label fw-bold">Follow up / วันนัด</label><input type="date" id="followUpDate" class="form-control"></div>
+            <div class="col-md-4 mb-3"><label class="form-label fw-bold">วันหมดอายุ</label><input type="date" id="expiryDate" class="form-control"></div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">วิธีใช้ / ตารางบริหารยา</label>
+            <input type="text" id="administrationSchedule" class="form-control">
+          </div>
+
+          <div class="row">
             <div class="col-md-4 mb-3">
-              <label class="form-label fw-bold">การเก็บรักษา</label>
-              <input type="text" id="storage" class="form-control" placeholder="2-8°C">
+              <label class="form-label fw-bold">จุดรับฝากยา <span class="text-danger">*</span></label>
+              <select id="depositLocation" class="form-select" required>
+                <option value="">-- เลือกจุดรับฝากยา --</option>
+                <option value="OPD Pharmacy">OPD Pharmacy</option>
+                <option value="IPD Pharmacy">IPD Pharmacy</option>
+              </select>
             </div>
             <div class="col-md-4 mb-3">
-              <label class="form-label fw-bold">โรงพยาบาล</label>
-              <input type="text" id="hospital" class="form-control" value="Bangkok Hospital">
+              <label class="form-label fw-bold">หน่วยงานที่เอายามาฝาก <span class="text-danger">*</span></label>
+              <select id="department" class="form-select" required>
+                <option value="">-- เลือกหน่วยงาน --</option>
+              </select>
+              <small class="text-muted">ดึงข้อมูลจาก Sheet Departments</small>
             </div>
             <div class="col-md-4 mb-3">
-              <label class="form-label fw-bold">PN (Prescription No.)</label>
-              <input type="text" id="pn" class="form-control" placeholder="O2603300492">
+              <label class="form-label fw-bold">Staff ID ผู้บันทึก <span class="text-danger">*</span></label>
+              <input type="text" id="createdByStaffId" class="form-control" required>
+              <small class="text-muted" id="createdByStaffName"></small>
             </div>
           </div>
 
           <div class="row">
-            <div class="col-md-6 mb-3">
-              <label class="form-label fw-bold">วันที่รับยา <span class="text-danger">*</span></label>
-              <input type="date" id="entryDate" class="form-control" required>
-            </div>
-            <div class="col-md-6 mb-3">
-              <label class="form-label fw-bold">วันหมดอายุ</label>
-              <input type="date" id="expiryDate" class="form-control">
-            </div>
+            <div class="col-md-12 mb-3"><label class="form-label fw-bold">Image URL</label><input type="url" id="imageUrl" class="form-control"></div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">หมายเหตุ</label>
+            <textarea id="notes" class="form-control" rows="3"></textarea>
           </div>
 
           <div class="mb-4">
-            <label class="form-label fw-bold">หมายเหตุ / วิธีใช้</label>
-            <textarea id="notes" class="form-control" rows="3" placeholder="ฉีดเข้าใต้ผิวหนัง (SC) ครั้งละ 4,000 ยูนิต..."></textarea>
+            <label class="form-label fw-bold">OCR Raw Text</label>
+            <textarea id="ocrRawText" class="form-control" rows="4"></textarea>
           </div>
 
           <div class="d-grid gap-2">
-            <button type="submit" class="btn btn-success btn-lg fw-bold">
-              💾 บันทึกยาฝาก
-            </button>
+            <button type="submit" class="btn btn-success btn-lg fw-bold">💾 บันทึกยาฝาก</button>
             <a href="index.html" class="btn btn-outline-secondary">ยกเลิก</a>
           </div>
         </form>
@@ -158,10 +159,17 @@
     </div>
   </div>
 
+  <div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header"><strong class="me-auto" id="toastTitle">แจ้งเตือน</strong><button type="button" class="btn-close" data-bs-dismiss="toast"></button></div>
+      <div class="toast-body" id="toastMessage"></div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
-  <script src="js/ocr.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/ocr.js"></script>
 </body>
 </html>
