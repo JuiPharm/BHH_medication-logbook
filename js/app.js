@@ -231,7 +231,14 @@ function renderResults(medicines, title) {
   });
 
   html += '</div>';
-  container.innerHTML = html;
+  
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
+  const fragment = document.createDocumentFragment();
+  while (tempDiv.firstChild) {
+    fragment.appendChild(tempDiv.firstChild);
+  }
+  container.replaceChildren(fragment);
 }
 
 async function submitMedicine(e) {
@@ -483,7 +490,14 @@ function renderHistory(history, hn) {
   });
 
   html += '</tbody></table></div>';
-  container.innerHTML = html;
+  
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
+  const fragment = document.createDocumentFragment();
+  while (tempDiv.firstChild) {
+    fragment.appendChild(tempDiv.firstChild);
+  }
+  container.replaceChildren(fragment);
 }
 
 function formatDate(dateStr) {

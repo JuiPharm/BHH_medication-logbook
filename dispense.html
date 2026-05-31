@@ -8,6 +8,7 @@
   <link rel="icon" type="image/png" href="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO">
   <link rel="shortcut icon" href="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO">
   <link rel="apple-touch-icon" href="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO">
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -91,6 +92,10 @@
       const medId = new URLSearchParams(window.location.search).get('id');
       if (medId) loadMedicineForDispense(medId);
       else document.getElementById('medicineInfo').innerHTML = '<div class="alert alert-danger">❌ ไม่พบรหัสยา</div>';
+      
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(err => console.log('SW Error:', err));
+      }
     });
   </script>
 </body>

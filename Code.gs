@@ -409,18 +409,15 @@ function dispenseMedicine(data) {
     const sheet = getSheet_(SHEET_MEDICINES);
     const range = sheet.getDataRange();
     const values = range.getValues();
-    const displayValues = range.getDisplayValues();
     const headers = values[0].map(String);
     const idx = makeIndex_(headers);
 
     let sheetRow = -1;
     let row = null;
-    let rowDisplay = null;
     for (let i = 1; i < values.length; i++) {
       if (String(values[i][idx.ID]) === String(data.medicineId)) {
         sheetRow = i + 1;
         row = values[i];
-        rowDisplay = displayValues[i];
         break;
       }
     }
@@ -437,6 +434,7 @@ function dispenseMedicine(data) {
     const now = new Date();
     const newStatus = newRemaining <= 0 ? 'HIDDEN' : 'ACTIVE';
 
+    // ไม่สามารถรวบเป็น setValues([]) ได้ง่ายๆ เนื่องจาก Column ไม่ติดกัน
     sheet.getRange(sheetRow, idx.RemainingQty + 1).setValue(newRemaining);
     sheet.getRange(sheetRow, idx.LastDispensed + 1).setValue(now);
     sheet.getRange(sheetRow, idx.Status + 1).setValue(newStatus);
@@ -445,7 +443,7 @@ function dispenseMedicine(data) {
     const historyRowObj = {
       DispenseID: Utilities.getUuid(),
       MedicineID: data.medicineId,
-      HN: safeFormatHN_(rowDisplay ? rowDisplay[idx.HN] : row[idx.HN]),
+      HN: safeFormatHN_(row[idx.HN]),
       PatientName: row[idx.PatientName] || '',
       DrugName: row[idx.DrugName] || '',
       DispenseQty: dispenseQty,
@@ -586,27 +584,28 @@ function readObjects_(sheetName) {
   const sheet = getSheet_(sheetName);
   const range = sheet.getDataRange();
   const values = range.getValues();
-  const displayValues = range.getDisplayValues();
   if (values.length <= 1) return [];
 
   const headers = values[0].map(String);
-  const displayHeaders = displayValues[0].map(String);
   return values
     .slice(1)
     .filter(r => r.some(v => v !== ''))
-    .map((row, i) => rowToObject_(headers, row, displayValues[i + 1], displayHeaders));
+    .map(row => rowToObject_(headers, row));
 }
 
-function rowToObject_(headers, row, displayRow) {
+function rowToObject_(headers, row) {
   const obj = {};
   headers.forEach((h, i) => {
     if (!h) return;
     const header = String(h).trim();
     const value = row[i];
-    const displayValue = displayRow ? displayRow[i] : value;
 
     if (header === 'HN' || header === 'StaffID' || header === 'CreatedByStaffID' || header === 'DispensedByStaffID') {
-      obj[header] = cleanText_(displayValue);
+      if (header === 'HN') {
+        obj[header] = safeFormatHN_(value);
+      } else {
+        obj[header] = cleanText_(value);
+      }
     } else if (value instanceof Date) {
       obj[header] = value.toISOString();
     } else {
@@ -688,4 +687,85 @@ function jsonResponse(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ============================================
+// AUTO ARCHIVING SYSTEM
+// ============================================
+const SHEET_MEDICINES_ARCHIVE = 'Medicines_Archive';
+
+function setupDailyTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (const trigger of triggers) {
+    if (trigger.getHandlerFunction() === 'archiveOldRecords') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  }
+  ScriptApp.newTrigger('archiveOldRecords')
+    .timeBased()
+    .atHour(2)
+    .everyDays(1)
+    .create();
+  return 'ตั้งค่า Daily archive trigger เรียบร้อยแล้ว (จะรันช่วง 02:00 น. ของทุกวัน)';
+}
+
+function archiveOldRecords() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const mainSheet = ss.getSheetByName(SHEET_MEDICINES);
+    if (!mainSheet) return;
+    
+    let archiveSheet = ss.getSheetByName(SHEET_MEDICINES_ARCHIVE);
+    if (!archiveSheet) {
+      archiveSheet = ss.insertSheet(SHEET_MEDICINES_ARCHIVE);
+      const headers = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues();
+      archiveSheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
+      archiveSheet.getRange(1, 1, 1, headers[0].length).setFontWeight('bold');
+      archiveSheet.setFrozenRows(1);
+    }
+    
+    const range = mainSheet.getDataRange();
+    const values = range.getValues();
+    if (values.length <= 1) return;
+    
+    const headers = values[0];
+    const idxRemaining = headers.indexOf('RemainingQty');
+    const idxStatus = headers.indexOf('Status');
+    
+    if (idxRemaining === -1 || idxStatus === -1) return;
+    
+    const toArchive = [];
+    const rowsToDelete = [];
+    
+    // วนลูปจากล่างขึ้นบน เพื่อไม่ให้ Index เลื่อนตอนลบ Row
+    for (let i = values.length - 1; i >= 1; i--) {
+      const row = values[i];
+      const remaining = Number(row[idxRemaining]) || 0;
+      const status = String(row[idxStatus] || '').toUpperCase();
+      
+      if (remaining <= 0 || status === 'HIDDEN') {
+        toArchive.push(row);
+        rowsToDelete.push(i + 1); // +1 เพราะ Row ใน Sheet เริ่มที่ 1
+      }
+    }
+    
+    if (toArchive.length > 0) {
+      const startRow = archiveSheet.getLastRow() + 1;
+      toArchive.reverse(); // คืนลำดับเดิม
+      archiveSheet.getRange(startRow, 1, toArchive.length, toArchive[0].length).setValues(toArchive);
+      
+      for (const rowIndex of rowsToDelete) {
+        mainSheet.deleteRow(rowIndex);
+      }
+      
+      clearMasterCache_();
+      Logger.log(`Archived ${toArchive.length} records.`);
+    }
+  } catch (err) {
+    Logger.log('Archive error: ' + err.message);
+  } finally {
+    lock.releaseLock();
+  }
 }

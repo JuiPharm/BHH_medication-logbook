@@ -1,0 +1,21 @@
+{
+  "name": "Medication Logbook",
+  "short_name": "MedLog",
+  "description": "ระบบสมุดยาฝาก",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#667eea",
+  "icons": [
+    {
+      "src": "https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
